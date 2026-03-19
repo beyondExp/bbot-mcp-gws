@@ -236,13 +236,20 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 });
 
 async function main() {
-  const forceStdio = (process.env.MCP_TRANSPORT || "").toLowerCase() === "stdio";
-  const forceHttp =
-    (process.env.MCP_TRANSPORT || "").toLowerCase() === "streamable_http" ||
-    (process.env.MCP_TRANSPORT || "").toLowerCase() === "http";
+  const requestedTransport = (process.env.MCP_TRANSPORT || "").toLowerCase().trim();
+  const forceStdio = requestedTransport === "stdio";
+  const forceHttp = requestedTransport === "streamable_http" || requestedTransport === "http";
 
-  // E2B/Hub uses Streamable HTTP and typically provides PORT.
-  const shouldUseHttp = forceHttp || (!forceStdio && !!process.env.PORT);
+  // When running in non-interactive hosts (E2B), stdio is often closed which would
+  // cause the process to exit. Default to Streamable HTTP unless stdio is forced.
+  const isInteractive = Boolean(process.stdin.isTTY || process.stdout.isTTY);
+  const shouldUseHttp = forceHttp || (!forceStdio && (!isInteractive || !!process.env.PORT));
+
+  // eslint-disable-next-line no-console
+  console.error(
+    `[mcp-gws] boot: transport=${shouldUseHttp ? "streamable_http" : "stdio"} ` +
+      `(requested=${requestedTransport || "auto"}, interactive=${isInteractive}, PORT=${process.env.PORT || ""})`
+  );
 
   if (!shouldUseHttp) {
     const transport = new StdioServerTransport();
@@ -291,6 +298,12 @@ async function main() {
     console.error(`[mcp-gws] Streamable HTTP listening on :${port} (/mcp)`);
   });
 
+  httpServer.on("error", (err) => {
+    // eslint-disable-next-line no-console
+    console.error("[mcp-gws] HTTP server error:", err);
+    process.exitCode = 1;
+  });
+
   const shutdown = async () => {
     try {
       await transport.close();
@@ -311,6 +324,18 @@ async function main() {
 main().catch((err) => {
   // eslint-disable-next-line no-console
   console.error(err);
+  process.exitCode = 1;
+});
+
+process.on("unhandledRejection", (reason) => {
+  // eslint-disable-next-line no-console
+  console.error("[mcp-gws] unhandledRejection:", reason);
+  process.exitCode = 1;
+});
+
+process.on("uncaughtException", (err) => {
+  // eslint-disable-next-line no-console
+  console.error("[mcp-gws] uncaughtException:", err);
   process.exitCode = 1;
 });
 
