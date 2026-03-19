@@ -245,11 +245,24 @@ async function main() {
   const isInteractive = Boolean(process.stdin.isTTY || process.stdout.isTTY);
   const shouldUseHttp = forceHttp || (!forceStdio && (!isInteractive || !!process.env.PORT));
 
-  // eslint-disable-next-line no-console
-  console.error(
+  const logHttp = (...args) => {
+    // Some sandbox log streams only capture stdout; some capture stderr. Emit to both in HTTP mode.
+    // eslint-disable-next-line no-console
+    console.log(...args);
+    // eslint-disable-next-line no-console
+    console.error(...args);
+  };
+
+  const bootMsg =
     `[mcp-gws] boot: transport=${shouldUseHttp ? "streamable_http" : "stdio"} ` +
-      `(requested=${requestedTransport || "auto"}, interactive=${isInteractive}, PORT=${process.env.PORT || ""})`
-  );
+    `(requested=${requestedTransport || "auto"}, interactive=${isInteractive}, PORT=${process.env.PORT || ""})`;
+
+  if (shouldUseHttp) {
+    logHttp(bootMsg);
+  } else {
+    // eslint-disable-next-line no-console
+    console.error(bootMsg);
+  }
 
   if (!shouldUseHttp) {
     const transport = new StdioServerTransport();
@@ -294,13 +307,11 @@ async function main() {
   });
 
   httpServer.listen(port, "0.0.0.0", () => {
-    // eslint-disable-next-line no-console
-    console.error(`[mcp-gws] Streamable HTTP listening on :${port} (/mcp)`);
+    logHttp(`[mcp-gws] Streamable HTTP listening on :${port} (/mcp)`);
   });
 
   httpServer.on("error", (err) => {
-    // eslint-disable-next-line no-console
-    console.error("[mcp-gws] HTTP server error:", err);
+    logHttp("[mcp-gws] HTTP server error:", err);
     process.exitCode = 1;
   });
 
@@ -323,7 +334,7 @@ async function main() {
 
 main().catch((err) => {
   // eslint-disable-next-line no-console
-  console.error(err);
+  console.error("[mcp-gws] fatal:", err);
   process.exitCode = 1;
 });
 
