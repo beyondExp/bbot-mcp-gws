@@ -8,13 +8,13 @@
     "bbot-mcp-gws": "./src/index.js"
   },
   "scripts": {
+    "postinstall": "node ./scripts/install-gws.mjs",
     "start:mcp": "node ./src/index.js"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
-    "@googleworkspace/cli": "^0.4.1",
     "@modelcontextprotocol/sdk": "^1.9.0"
   }
 }

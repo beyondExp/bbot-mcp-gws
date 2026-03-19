@@ -52,6 +52,10 @@ function resolveGwsBinary() {
   const override = (process.env.GWS_BIN || "").trim();
   if (override) return override;
 
+  // Prefer a repo-local downloaded binary (used in E2B).
+  const repoBin = path.join(__dirname, "..", "bin", process.platform === "win32" ? "gws.exe" : "gws");
+  if (fs.existsSync(repoBin)) return repoBin;
+
   // Prefer the dependency-installed binary.
   const binName = process.platform === "win32" ? "gws.cmd" : "gws";
   const localBin = path.join(__dirname, "..", "node_modules", ".bin", binName);
@@ -66,7 +70,9 @@ function ensureCredentialsFromEnv() {
   // as a base64 env var and materialize it as GOOGLE_APPLICATION_CREDENTIALS.
   const b64 = (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON_BASE64 || "").trim();
   if (!b64) return;
-  if ((process.env.GOOGLE_APPLICATION_CREDENTIALS || "").trim()) return;
+  if ((process.env.GOOGLE_APPLICATION_CREDENTIALS || "").trim() || (process.env.GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE || "").trim()) {
+    return;
+  }
 
   try {
     const json = Buffer.from(b64, "base64").toString("utf8");
@@ -74,6 +80,7 @@ function ensureCredentialsFromEnv() {
     const outPath = path.join(os.tmpdir(), `bbot-gws-creds-${Date.now()}.json`);
     fs.writeFileSync(outPath, JSON.stringify(parsed), { encoding: "utf8", mode: 0o600 });
     process.env.GOOGLE_APPLICATION_CREDENTIALS = outPath;
+    process.env.GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE = outPath;
   } catch {
     // Ignore invalid payloads; gws may still authenticate another way.
   }
