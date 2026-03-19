@@ -285,7 +285,9 @@ async function main() {
   const httpServer = createServer(async (req, res) => {
     try {
       const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
-      if (url.pathname !== "/mcp") {
+      const pathname = url.pathname || "/";
+      const isMcpPath = pathname === "/mcp" || pathname === "/mcp/" || pathname.startsWith("/mcp/");
+      if (!isMcpPath) {
         res.statusCode = 404;
         res.setHeader("content-type", "text/plain; charset=utf-8");
         res.end("Not Found");
@@ -294,8 +296,7 @@ async function main() {
 
       await transport.handleRequest(req, res);
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error("[mcp-gws] HTTP handler error:", err);
+      logHttp("[mcp-gws] HTTP handler error:", err);
       try {
         res.statusCode = 500;
         res.setHeader("content-type", "text/plain; charset=utf-8");
