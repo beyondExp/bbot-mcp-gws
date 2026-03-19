@@ -9,6 +9,7 @@ pnpm-debug.log*
 *.local
 dist/
 build/
+bin/
 .vscode/
 .idea/
 
