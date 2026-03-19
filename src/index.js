@@ -240,10 +240,10 @@ async function main() {
   const forceStdio = requestedTransport === "stdio";
   const forceHttp = requestedTransport === "streamable_http" || requestedTransport === "http";
 
-  // When running in non-interactive hosts (E2B), stdio is often closed which would
-  // cause the process to exit. Default to Streamable HTTP unless stdio is forced.
+  // Default to stdio transport. When running standalone behind an HTTP ingress,
+  // set PORT (or MCP_TRANSPORT=http) to serve Streamable HTTP.
   const isInteractive = Boolean(process.stdin.isTTY || process.stdout.isTTY);
-  const shouldUseHttp = forceHttp || (!forceStdio && (!isInteractive || !!process.env.PORT));
+  const shouldUseHttp = forceHttp || (!forceStdio && !!process.env.PORT);
 
   const logHttp = (...args) => {
     // Some sandbox log streams only capture stdout; some capture stderr. Emit to both in HTTP mode.
