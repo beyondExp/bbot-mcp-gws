@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
+import { createServer } from "node:http";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -8,6 +10,7 @@ import { fileURLToPath } from "node:url";
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -233,8 +236,76 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 });
 
 async function main() {
-  const transport = new StdioServerTransport();
+  const forceStdio = (process.env.MCP_TRANSPORT || "").toLowerCase() === "stdio";
+  const forceHttp =
+    (process.env.MCP_TRANSPORT || "").toLowerCase() === "streamable_http" ||
+    (process.env.MCP_TRANSPORT || "").toLowerCase() === "http";
+
+  // E2B/Hub uses Streamable HTTP and typically provides PORT.
+  const shouldUseHttp = forceHttp || (!forceStdio && !!process.env.PORT);
+
+  if (!shouldUseHttp) {
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+    // Keep process alive for stdio-based hosts.
+    return;
+  }
+
+  const port = Number.parseInt(process.env.PORT || "3000", 10);
+  if (!Number.isFinite(port) || port <= 0) {
+    throw new Error(`Invalid PORT: ${process.env.PORT}`);
+  }
+
+  const transport = new StreamableHTTPServerTransport({
+    // Stateful mode: client can reuse the same sandbox/runtime across calls.
+    sessionIdGenerator: () => crypto.randomUUID(),
+  });
   await server.connect(transport);
+
+  const httpServer = createServer(async (req, res) => {
+    try {
+      const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+      if (url.pathname !== "/mcp") {
+        res.statusCode = 404;
+        res.setHeader("content-type", "text/plain; charset=utf-8");
+        res.end("Not Found");
+        return;
+      }
+
+      await transport.handleRequest(req, res);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[mcp-gws] HTTP handler error:", err);
+      try {
+        res.statusCode = 500;
+        res.setHeader("content-type", "text/plain; charset=utf-8");
+        res.end("Internal Server Error");
+      } catch {
+        // ignore
+      }
+    }
+  });
+
+  httpServer.listen(port, "0.0.0.0", () => {
+    // eslint-disable-next-line no-console
+    console.error(`[mcp-gws] Streamable HTTP listening on :${port} (/mcp)`);
+  });
+
+  const shutdown = async () => {
+    try {
+      await transport.close();
+    } catch {
+      // ignore
+    }
+    httpServer.close(() => {
+      process.exit(0);
+    });
+    // Ensure we don't hang forever.
+    setTimeout(() => process.exit(0), 2000).unref();
+  };
+
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
 }
 
 main().catch((err) => {
